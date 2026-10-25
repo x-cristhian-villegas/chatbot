@@ -2,7 +2,8 @@
  * Chat flotante de iamcristhian.dev
  * Uso:
  *   <script src="https://chat.iamcristhian.dev/widget.js" data-site="ytdownloader" defer></script>
- * Atributos opcionales: data-color="#ff0033", data-position="left|right", data-api="https://..."
+ * Atributos opcionales: data-color="#ff0033", data-position="left|right", data-api="https://...",
+ *   data-read-page="false" (no enviar el texto visible de la página al asistente)
  * API JS: window.IamcChat.open(), .close(), .toggle(), .reset()
  */
 (function () {
@@ -14,9 +15,31 @@
     color: script?.dataset.color || '#3b5bfd',
     position: script?.dataset.position === 'left' ? 'left' : 'right',
     api: script?.dataset.api || (script ? new URL(script.src).origin : ''),
+    readPage: script?.dataset.readPage !== 'false',
   }
   const STORE_KEY = `iamc-chat:${cfg.site}`
   const MAX_CHARS = 2000
+  const MAX_PAGE_CHARS = 6000
+
+  // Texto visible de la página (sin scripts, formularios ni el propio widget) para que el asistente sepa qué ve el visitante
+  function pageText() {
+    if (!cfg.readPage) return null
+    try {
+      const src = document.querySelector('main, [role=main], article') || document.body
+      const clone = document.createElement('div')
+      clone.append(...[...src.childNodes].map((n) => n.cloneNode(true)))
+      clone.querySelectorAll('script, style, noscript, template, svg, iframe, input, textarea, select, #iamc-chat, [aria-hidden=true]').forEach((n) => n.remove())
+      // innerText respeta los saltos de línea visibles, pero solo en nodos montados y no ocultos con visibility
+      clone.setAttribute('aria-hidden', 'true')
+      clone.style.cssText = 'position:fixed;left:-99999px;top:0;width:1000px;opacity:0;pointer-events:none;'
+      document.body.appendChild(clone)
+      const text = clone.innerText
+      clone.remove()
+      return text.replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim().slice(0, MAX_PAGE_CHARS) || null
+    } catch {
+      return null
+    }
+  }
 
   const store = {
     load() {
@@ -230,6 +253,7 @@
           messages: state.messages,
           page_url: location.href.split('#')[0],
           page_title: document.title,
+          page_text: pageText(),
         }),
       })
       if (!r.ok || !r.body) {
