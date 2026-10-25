@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat · iamcristhian.dev</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f8fafc; --text: #0f172a; --muted: #475569; --code: #e2e8f0; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --text: #e2e8f0; --muted: #94a3b8; --code: #1e293b; } }
+    body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 720px; margin: 0 auto; padding: 48px 16px; line-height: 1.6; }
+    p { color: var(--muted); }
+    pre { background: var(--code); padding: 14px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Asistente de iamcristhian.dev</h1>
+    <p>El chat flotante está abajo a la derecha. Para añadirlo a cualquier proyecto, pega esto antes de <code>&lt;/body&gt;</code>:</p>
+    <pre>&lt;script src="https://chat.iamcristhian.dev/widget.js" data-site="default" defer&gt;&lt;/script&gt;</pre>
+  </main>
+  <script src="/widget.js" data-site="default" defer></script>
+</body>
+</html>

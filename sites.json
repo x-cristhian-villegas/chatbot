@@ -1,0 +1,16 @@
+{
+  "default": {
+    "name": "iamcristhian.dev",
+    "title": "Asistente",
+    "greeting": "¡Hola! 👋 Soy el asistente de iamcristhian.dev. ¿En qué te ayudo?",
+    "suggestions": ["¿Qué proyectos hay?", "¿Cómo contacto a Cristhian?"],
+    "context": "Sitio personal de Cristhian Villegas, desarrollador. Proyectos conocidos:\n- YT MP3 Downloader (https://ytdownloader.iamcristhian.dev): app privada para buscar videos de YouTube y descargarlos como MP3. Requiere token de acceso personal.\nPara contacto, indica que use los medios publicados en iamcristhian.dev."
+  },
+  "ytdownloader": {
+    "name": "YT MP3 Downloader",
+    "title": "Ayuda · YT MP3",
+    "greeting": "¡Hola! 👋 Te ayudo a usar YT MP3. Pregúntame lo que quieras.",
+    "suggestions": ["¿Cómo descargo varias canciones?", "¿Cuánto tiempo se guardan?", "¿Puedo usarlo en el celular?"],
+    "context": "App privada para buscar videos de YouTube y descargarlos como MP3 (192 kbps).\nCómo se usa:\n- Acceso: requiere un token de uso personal que entrega Cristhian. El navegador lo recuerda 1 año. Botón con la inicial arriba a la derecha = Salir.\n- Buscar: escribe en la barra o pega un enlace de YouTube (watch, youtu.be, shorts).\n- Descargar: en la vista del video, botón rojo 'Descargar MP3'. En los resultados: botón '+ MP3' sobre la miniatura, o clic derecho sobre un video > 'Agregar a cola de descargas' (en Android, mantener pulsado).\n- Cola: botón 'Descargas' arriba a la derecha; muestra posición, progreso, Guardar, Reintentar, Quitar y 'Guardar todas'. Se procesan 2 a la vez, en orden de llegada. Opción 'Guardar automáticamente al terminar'.\n- El historial va ligado al token: con el mismo token se ve en cualquier dispositivo.\n- Los archivos se borran del servidor a las 24 horas.\n- Límites: videos de hasta 2 horas, 50 descargas pendientes.\n- Si una descarga falla, usar 'Reintentar'; si sigue fallando, avisar a Cristhian (puede requerir actualizar el servidor)."
+  }
+}
