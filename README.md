@@ -39,7 +39,8 @@ y su archivo en `knowledge/`. No requiere reiniciar.
 - `app/main.py`: FastAPI en `127.0.0.1:8020`, servicio systemd `chatbot`. Respuestas en streaming (SSE).
 - API key: `CLAUDE_API_KEY` en `/opt/projects/data/.env` (`EnvironmentFile` del servicio).
 - Modelo `claude-haiku-5-5`, effort `low`, historial máx. 20 mensajes, 2000 caracteres por mensaje.
-- Límites por IP: 20 mensajes / 10 min y 200 / día.
+- Límites por IP: 20 mensajes / 10 min, 200 / día y 30 000 tokens / día (entrada sin caché + salida; no cuenta
+  la base de conocimiento cacheada). Contadores en memoria: se reinician al reiniciar el servicio.
 
 ```bash
 systemctl restart chatbot

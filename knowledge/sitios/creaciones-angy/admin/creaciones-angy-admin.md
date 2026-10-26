@@ -106,6 +106,10 @@ Con el producto publicado aparecen **«Ver en la tienda ↗»** y **«Retirar de
 - **Miniatura**: cuadrada de preferencia (se recorta al centro). JPG, PNG, WebP o GIF, **máx. 10 MB**. Botón **«Subir miniatura»** o **«Cambiar»**.
 - Se **procesa en segundo plano**: verás «Procesando…» unos segundos; luego aparece la imagen, o «⚠» con el error. Si tarda: «La imagen tarda en procesarse; recarga la página en un momento.»
 - **Galería**: **«+ Fotos»** (varias a la vez). Cada foto tiene **‹** / **›** para ordenar y **🗑** para eliminar.
+- **Desde una URL**: junto a **«Subir miniatura»** y junto a **«+ Fotos»** está **«🔗 Desde URL»**. Pega la dirección de una imagen pública (que empiece con `https://` o `http://`) y pulsa **«Importar»**. La tienda descarga la imagen y la procesa igual que una subida.
+  - Debe ser la dirección de la **imagen** (termina en .jpg, .png, .webp… o abre solo la imagen en el navegador), no la de una página que la contiene. Truco: clic derecho sobre la imagen → «Copiar dirección de imagen».
+  - Formatos JPG, PNG, WebP o GIF, máx. 10 MB. Por seguridad solo se aceptan sitios públicos de internet (no direcciones internas ni puertos distintos de los normales).
+  - Errores comunes: «El sitio respondió 403/404» (el sitio no permite descargarla o la dirección cambió: descárgala y súbela desde tu equipo), «Formato no permitido» (la dirección no era una imagen).
 
 ### Otro proveedor (duplicar)
 Si te venden el mismo producto en otro lado: en la tarjeta **«Otro proveedor»** elige el proveedor en «Elige proveedor…» y pulsa **«Duplicar»**. Se crea una copia **sin publicar** con el nuevo proveedor, mismo tipo, categoría, descripción, atributos, imágenes, precio y costo. Aviso: «Copia creada para el otro proveedor (sin publicar): ajusta su costo y precio». Así el cotizador compara ambos proveedores (por eso conviene asignarles un **Tipo de producto**).

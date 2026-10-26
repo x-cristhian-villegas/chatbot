@@ -31,6 +31,9 @@ MAX_HISTORY = 20  # mensajes (usuario + asistente) que se envían al modelo
 RATE_LIMIT = 20  # mensajes por IP...
 RATE_WINDOW = 10 * 60  # ...en esta ventana
 DAILY_LIMIT_PER_IP = 200
+# Tokens por IP al día: entrada sin caché (historial, página, mensaje) + salida. No cuenta las instrucciones ni la base
+# de conocimiento (bloque cacheado, compartido por todos los visitantes).
+DAILY_TOKENS_PER_IP = 30_000
 
 # Orígenes que pueden incrustar el widget: iamcristhian.dev y sus subdominios, las tiendas de clientes y localhost
 ALLOWED_ORIGIN_RE = (
@@ -142,6 +145,7 @@ app.add_middleware(
 
 _hits: dict[str, deque] = defaultdict(deque)
 _daily: dict[str, tuple[str, int]] = {}
+_tokens: dict[str, tuple[str, int]] = {}  # ip -> (día, tokens usados)
 
 
 def client_ip(request: Request) -> str:
@@ -163,6 +167,19 @@ def check_rate_limit(ip: str):
         raise HTTPException(429, "Se alcanzó el límite diario de mensajes.")
     q.append(now)
     _daily[ip] = (today, count + 1)
+
+
+def check_token_limit(ip: str):
+    today = time.strftime("%Y-%m-%d")
+    day, used = _tokens.get(ip, (today, 0))
+    if day == today and used >= DAILY_TOKENS_PER_IP:
+        raise HTTPException(429, "Se alcanzó el límite diario de uso del asistente. Vuelve mañana.")
+
+
+def add_tokens(ip: str, tokens: int):
+    today = time.strftime("%Y-%m-%d")
+    day, used = _tokens.get(ip, (today, 0))
+    _tokens[ip] = (today, (used if day == today else 0) + tokens)
 
 
 _jwks_clients: dict[str, jwt.PyJWKClient] = {}
@@ -224,6 +241,7 @@ async def chat(body: ChatIn, request: Request):
     if site.get("auth"):
         usuario = require_role(site["auth"], request.headers.get("authorization"))
     ip = client_ip(request)
+    check_token_limit(ip)
     check_rate_limit(usuario or ip)
 
     params = dict(
@@ -235,6 +253,7 @@ async def chat(body: ChatIn, request: Request):
     )
 
     async def events():
+        stream = None
         try:
             async with client.messages.stream(**params) as stream:
                 async for text in stream.text_stream:
@@ -256,6 +275,15 @@ async def chat(body: ChatIn, request: Request):
         except anthropic.APIStatusError as e:
             log.error("error de API %s: %s", e.status_code, e.message)
             yield sse({"error": "El asistente no está disponible ahora mismo."})
+        finally:
+            # También se cuenta lo generado si el visitante cierra la conexión a mitad de la respuesta
+            try:
+                snap = stream and stream.current_message_snapshot
+            except AssertionError:  # la API no llegó a responder
+                snap = None
+            if snap:
+                add_tokens(ip, snap.usage.input_tokens + snap.usage.output_tokens)
+                log.info("tokens del día ip=%s: %s/%s", ip, _tokens[ip][1], DAILY_TOKENS_PER_IP)
 
     return StreamingResponse(
         events(),
