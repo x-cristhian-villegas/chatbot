@@ -5,6 +5,8 @@
  * Atributos opcionales: data-color="#ff0033", data-position="left|right", data-api="https://...",
  *   data-read-page="false" (no enviar el texto visible de la página al asistente)
  * API JS: window.IamcChat.open(), .close(), .toggle(), .reset()
+ *   .configure({ site, readPage, token }) para SPAs: cambia de sitio (p. ej. tienda ↔ panel) y, si el sitio exige
+ *   sesión, `token` es una función (síncrona o async) que devuelve el access token que se envía como Bearer.
  */
 (function () {
   if (window.IamcChat) return
@@ -16,8 +18,9 @@
     position: script?.dataset.position === 'left' ? 'left' : 'right',
     api: script?.dataset.api || (script ? new URL(script.src).origin : ''),
     readPage: script?.dataset.readPage !== 'false',
+    token: null,
   }
-  const STORE_KEY = `iamc-chat:${cfg.site}`
+  const storeKey = () => `iamc-chat:${cfg.site}`
   const MAX_CHARS = 2000
   const MAX_PAGE_CHARS = 6000
 
@@ -44,14 +47,14 @@
   const store = {
     load() {
       try {
-        return JSON.parse(sessionStorage.getItem(STORE_KEY)) || { messages: [], open: false }
+        return JSON.parse(sessionStorage.getItem(storeKey())) || { messages: [], open: false }
       } catch {
         return { messages: [], open: false }
       }
     },
     save(state) {
       try {
-        sessionStorage.setItem(STORE_KEY, JSON.stringify({ messages: state.messages.slice(-40), open: state.open }))
+        sessionStorage.setItem(storeKey(), JSON.stringify({ messages: state.messages.slice(-40), open: state.open }))
       } catch {
         /* sin almacenamiento: la conversación dura solo en esta página */
       }
@@ -247,7 +250,7 @@
     try {
       const r = await fetch(`${cfg.api}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await cabeceras(),
         body: JSON.stringify({
           site: cfg.site,
           messages: state.messages,
@@ -329,15 +332,33 @@
     render()
     autosize()
     if (state.open) setOpen(true)
-    fetch(`${cfg.api}/api/sites/${encodeURIComponent(cfg.site)}`)
+    cargarInfo()
+  }
+
+  function cargarInfo() {
+    const sitio = cfg.site
+    fetch(`${cfg.api}/api/sites/${encodeURIComponent(sitio)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((info) => {
-        if (!info) return
+        if (!info || sitio !== cfg.site) return
         state.info = info
         if (info.title) $('header h2').textContent = info.title
         if (!state.busy) render()
       })
       .catch(() => {})
+  }
+
+  async function cabeceras() {
+    const h = { 'Content-Type': 'application/json' }
+    if (cfg.token) {
+      try {
+        const t = await cfg.token()
+        if (t) h.Authorization = `Bearer ${t}`
+      } catch {
+        /* sin token: el servidor responderá que hay que iniciar sesión */
+      }
+    }
+    return h
   }
 
   if (document.body) mount()
@@ -348,5 +369,18 @@
     close: () => setOpen(false),
     toggle: () => setOpen(!state.open),
     reset: () => $('.reset').click(),
+    configure(opciones = {}) {
+      if ('readPage' in opciones) cfg.readPage = opciones.readPage !== false
+      if ('token' in opciones) cfg.token = typeof opciones.token === 'function' ? opciones.token : null
+      if (opciones.site && opciones.site !== cfg.site && /^[a-z0-9_-]+$/.test(opciones.site) && !state.busy) {
+        // Cada sitio guarda su propia conversación: al cambiar no se mezclan (p. ej. la del panel con la de la tienda)
+        cfg.site = opciones.site
+        const guardado = store.load()
+        state.messages = guardado.messages
+        state.info = null
+        render()
+        cargarInfo()
+      }
+    },
   }
 })()

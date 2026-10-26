@@ -8,6 +8,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 
 import anthropic
+import jwt
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -31,8 +32,12 @@ RATE_LIMIT = 20  # mensajes por IP...
 RATE_WINDOW = 10 * 60  # ...en esta ventana
 DAILY_LIMIT_PER_IP = 200
 
-# Orígenes que pueden incrustar el widget: el dominio raíz y cualquier subdominio, más localhost para desarrollo
-ALLOWED_ORIGIN_RE = r"^https://([a-z0-9-]+\.)*iamcristhian\.dev$|^http://(localhost|127\.0\.0\.1)(:\d+)?$"
+# Orígenes que pueden incrustar el widget: iamcristhian.dev y sus subdominios, las tiendas de clientes y localhost
+ALLOWED_ORIGIN_RE = (
+    r"^https://([a-z0-9-]+\.)*iamcristhian\.dev$"
+    r"|^https://(www\.)?creaciones-angy\.com$"
+    r"|^http://(localhost|127\.0\.0\.1)(:\d+)?$"
+)
 
 BASE_SYSTEM = """Eres el asistente virtual de los proyectos web de Cristhian Villegas (iamcristhian.dev).
 Respondes dudas básicas de los visitantes de forma breve, clara y amable.
@@ -53,21 +58,36 @@ def load_sites() -> dict:
         return {}
 
 
-_knowledge_cache: tuple[tuple, str] = ((), "")
+_knowledge_cache: dict[tuple[str, ...], tuple[tuple, str]] = {}
 
 
 def strip_comments(text: str) -> str:
     return re.sub(r"<!--.*?-->", "", text, flags=re.S).strip()
 
 
-def load_knowledge() -> str:
-    """Concatena knowledge/*.md (ignorando README y los que empiezan por "_"). Se recarga si cambia algún archivo."""
-    global _knowledge_cache
-    files = sorted(
-        f for f in KNOWLEDGE_DIR.glob("*.md") if not f.name.startswith("_") and f.name.lower() != "readme.md"
-    )
-    stamp = tuple((f.name, f.stat().st_mtime_ns, f.stat().st_size) for f in files)
-    if stamp != _knowledge_cache[0]:
+def knowledge_files(dirs: tuple[str, ...]) -> list[Path]:
+    """Archivos .md de cada carpeta (sin subcarpetas), ignorando README y los que empiezan por "_".
+
+    `()` = la base general (knowledge/*.md). Las carpetas de `knowledge/sitios/` solo las cargan los sitios que las
+    declaran en sites.json, así el conocimiento de un cliente no se mezcla con el de otros sitios."""
+    files: list[Path] = []
+    for d in dirs or ("",):
+        folder = (KNOWLEDGE_DIR / d).resolve()
+        if not folder.is_relative_to(KNOWLEDGE_DIR.resolve()):
+            log.error("carpeta de conocimiento fuera de knowledge/: %s", d)
+            continue
+        files += sorted(
+            f for f in folder.glob("*.md") if not f.name.startswith("_") and f.name.lower() != "readme.md"
+        )
+    return files
+
+
+def load_knowledge(dirs: tuple[str, ...] = ()) -> str:
+    """Concatena los .md de las carpetas indicadas. Se recarga si cambia algún archivo."""
+    files = knowledge_files(dirs)
+    stamp = tuple((str(f), f.stat().st_mtime_ns, f.stat().st_size) for f in files)
+    cached = _knowledge_cache.get(dirs)
+    if cached is None or stamp != cached[0]:
         parts = []
         for f in files:
             body = strip_comments(f.read_text(encoding="utf-8"))
@@ -77,22 +97,23 @@ def load_knowledge() -> str:
         if len(text) > MAX_KNOWLEDGE_CHARS:
             log.warning("base de conocimiento recortada: %d caracteres", len(text))
             text = text[:MAX_KNOWLEDGE_CHARS]
-        _knowledge_cache = (stamp, text)
-        log.info("base de conocimiento cargada: %d archivos, %d caracteres", len(parts), len(text))
-    return _knowledge_cache[1]
+        _knowledge_cache[dirs] = (stamp, text)
+        log.info("base de conocimiento cargada %s: %d archivos, %d caracteres", "/".join(dirs) or "general",
+                 len(parts), len(text))
+    return _knowledge_cache[dirs][1]
 
 
-def system_blocks(site_id: str, page_url: str | None, page_title: str | None, page_text: str | None) -> list[dict]:
-    # Bloque 1 (fijo para todos los sitios): reglas + base de conocimiento -> se cachea
-    stable = BASE_SYSTEM
-    knowledge = load_knowledge()
+def system_blocks(site_id: str, site: dict, page_url: str | None, page_title: str | None,
+                  page_text: str | None) -> list[dict]:
+    # Bloque 1 (fijo por sitio): reglas + base de conocimiento -> se cachea.
+    # Un sitio con "knowledge" en sites.json usa solo esas carpetas y, si trae "system", sus propias reglas.
+    stable = site.get("system") or BASE_SYSTEM
+    knowledge = load_knowledge(tuple(site.get("knowledge") or ()))
     if knowledge:
         stable += f"\n\n<base_de_conocimiento>\n{knowledge}\n</base_de_conocimiento>"
     blocks = [{"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}}]
 
-    # Bloque 2 (cambia por sitio y página): va después del punto de caché
-    sites = load_sites()
-    site = sites.get(site_id) or sites.get("default") or {}
+    # Bloque 2 (cambia por página): va después del punto de caché
     extra = [f"El visitante está usando: {site.get('name', site_id)}. Prioriza la información de ese proyecto."]
     if site.get("context"):
         extra.append(site["context"])
@@ -115,7 +136,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=ALLOWED_ORIGIN_RE,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
     max_age=86400,
 )
 
@@ -142,6 +163,32 @@ def check_rate_limit(ip: str):
         raise HTTPException(429, "Se alcanzó el límite diario de mensajes.")
     q.append(now)
     _daily[ip] = (today, count + 1)
+
+
+_jwks_clients: dict[str, jwt.PyJWKClient] = {}
+
+
+def require_role(auth: dict, authorization: str | None) -> str:
+    """Valida el JWT de Keycloak (firma, emisor, audiencia, vigencia) y el rol de cliente. Devuelve el sujeto."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Inicia sesión para usar este asistente.")
+    token = authorization[7:].strip()
+    url = auth["jwks_url"]
+    jwks = _jwks_clients.setdefault(url, jwt.PyJWKClient(url, cache_keys=True, lifespan=3600, timeout=5))
+    try:
+        key = jwks.get_signing_key_from_jwt(token)
+        claims = jwt.decode(token, key.key, algorithms=["RS256"], issuer=auth["issuer"], audience=auth["audience"],
+                            options={"require": ["exp", "iss", "aud", "sub"]}, leeway=30)
+    except jwt.PyJWKClientError:
+        log.exception("no se pudieron obtener las llaves de %s", url)
+        raise HTTPException(503, "No se pudo verificar tu sesión. Inténtalo en un momento.")
+    except jwt.InvalidTokenError as e:
+        log.info("token rechazado: %s", e)
+        raise HTTPException(401, "Tu sesión expiró. Vuelve a iniciar sesión.")
+    roles = ((claims.get("resource_access") or {}).get(auth["client_id"]) or {}).get("roles") or []
+    if auth["role"] not in roles:
+        raise HTTPException(403, "Este asistente es solo para administradores.")
+    return claims["sub"]
 
 
 class ChatMessage(BaseModel):
@@ -171,13 +218,18 @@ async def chat(body: ChatIn, request: Request):
         raise HTTPException(400, "El último mensaje debe ser del usuario")
     if len(msgs[-1].content) > MAX_MESSAGE_CHARS:
         raise HTTPException(400, f"El mensaje no puede superar {MAX_MESSAGE_CHARS} caracteres")
+    sites = load_sites()
+    site = sites.get(body.site) or sites.get("default") or {}
+    usuario = None
+    if site.get("auth"):
+        usuario = require_role(site["auth"], request.headers.get("authorization"))
     ip = client_ip(request)
-    check_rate_limit(ip)
+    check_rate_limit(usuario or ip)
 
     params = dict(
         model=MODEL,
         max_tokens=MAX_TOKENS,
-        system=system_blocks(body.site, body.page_url, body.page_title, body.page_text),
+        system=system_blocks(body.site, site, body.page_url, body.page_title, body.page_text),
         output_config={"effort": "low"},  # preguntas básicas: respuesta rápida y barata
         messages=[{"role": m.role, "content": m.content} for m in msgs],
     )
@@ -193,7 +245,7 @@ async def chat(body: ChatIn, request: Request):
             elif final.stop_reason == "max_tokens":
                 yield sse({"t": "…"})
             u = final.usage
-            log.info("chat site=%s ip=%s in=%s cache_read=%s cache_write=%s out=%s", body.site, ip,
+            log.info("chat site=%s ip=%s admin=%s in=%s cache_read=%s cache_write=%s out=%s", body.site, ip, bool(usuario),
                      u.input_tokens, u.cache_read_input_tokens, u.cache_creation_input_tokens, u.output_tokens)
             yield sse({"done": True})
         except anthropic.RateLimitError:
