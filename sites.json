@@ -18,5 +18,16 @@
       "¿Cuánto tiempo se guardan?",
       "¿Puedo usarlo en el celular?"
     ]
+  },
+  "home": {
+    "name": "iamcristhian.dev (perfil de Cristhian)",
+    "title": "Asistente de Cristhian",
+    "greeting": "¡Hola! 👋 Soy el asistente de Cristhian. Pregúntame por su experiencia, tecnologías o proyectos.",
+    "suggestions": [
+      "¿Con qué tecnologías trabaja?",
+      "¿Qué proyectos ha hecho?",
+      "¿Cómo lo contacto?"
+    ],
+    "context": "El visitante está en la página de perfil de Cristhian. Habla de él en tercera persona, como su asistente (\"Cristhian trabaja con...\"). Para propuestas de trabajo o contacto, dirige al formulario de la sección Contacto."
   }
 }

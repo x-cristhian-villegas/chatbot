@@ -4,6 +4,7 @@ Lista de proyectos publicados (cada uno tiene su propio archivo con más detalle
 
 | Proyecto | Dirección | Qué es | Acceso |
 |---|---|---|---|
+| iamcristhian.dev | https://iamcristhian.dev | Página de perfil de Cristhian: tecnologías, proyectos, novedades, certificaciones, cursos y formulario de contacto | Público |
 | YT MP3 Downloader | https://ytdownloader.iamcristhian.dev | Buscar videos de YouTube y descargarlos como MP3, con cola de descargas | Privado: requiere token personal |
 | Asistente (chatbot) | https://chat.iamcristhian.dev | Este asistente flotante, presente en todos los proyectos | Público |
 
